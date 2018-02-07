@@ -11,8 +11,14 @@ this file and include it in basic-server.js so that it actually works.
 *Hint* Check out the node module documentation at http://nodejs.org/api/modules.html.
 
 **************************************************************/
+var _ = require('underscore');
+var url = require('url');
 var storage = {};
 storage.results = [];
+var orderKeys = {
+  'createdAt': true,
+  '-createdAt': true 
+};
 var requestHandler = function(request, response) {
   // Request and Response come from node's http module.
   //
@@ -59,17 +65,41 @@ var requestHandler = function(request, response) {
 
   // .writeHead() writes to the request line and headers of the response,
   // which includes the status and all headers.
+  var parsedURL = url.parse(request.url, true);
+  var parsedURLQuery = parsedURL.query.order;
 
-  if (request.url === '/classes/messages') { 
+  if (parsedURL.pathname === '/classes/messages') { 
+    let storageToSend = {};
+    storageToSend.results = [];
     if (request.method === 'GET') {
+      if (orderKeys[parsedURLQuery]) {
+        if (parsedURLQuery === '-createdAt') {
+          storageToSend.results = _.sortBy(storage.results, 'objectId').reverse();
+        } else if (parsedURLQuery === 'createdAt') {
+          storageToSend.results = _.sortBy(storage.results, 'createdAt');
+        }
+      } else {
+        storageToSend = Object.assign(storage);
+      }        
       response.writeHead(200, headers);
-      response.end(JSON.stringify(storage));
+      response.end(JSON.stringify(storageToSend)); 
+          
     } else if (request.method === 'POST') {
+      let body = '';
       request.on('data', (data) => {
-        storage.results.push(JSON.parse(data));
+        body += data;
+      }).on('end', () => {
+        let obj = JSON.parse(body);
+        obj.createdAt = new Date();
+        obj.objectId = storage.results.length;
+        storage.results.push(obj);
         response.writeHead(201, headers);
         response.end(JSON.stringify(storage));
       });
+
+    } else if (request.method === 'OPTIONS') {
+      response.writeHead(200, headers);
+      response.end();
     } 
   } else {
     response.writeHead(404, headers);
